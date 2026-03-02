@@ -175,7 +175,41 @@ def _get_tools() -> list[dict]:
             ),
             "inputSchema": {
                 "type": "object",
-                "properties": {},
+                "description": "Optional filters to narrow down the list of supported conversions.",
+                "properties": {
+                    "source_format": {
+                        "type": "string",
+                        "description": (
+                            "Optional source format to filter results. "
+                            "Only conversions from this format will be returned. "
+                            "One of: json, csv, xml, yaml, toml, html, markdown, "
+                            "plain_text, base64, url_encoded, hex, pdf, excel, docx. "
+                            "Omit to list all available conversions."
+                        ),
+                        "enum": [
+                            "json", "csv", "xml", "yaml", "toml",
+                            "html", "markdown", "plain_text",
+                            "base64", "url_encoded", "hex",
+                            "pdf", "excel", "docx",
+                        ],
+                    },
+                    "target_format": {
+                        "type": "string",
+                        "description": (
+                            "Optional target format to filter results. "
+                            "Only conversions to this format will be returned. "
+                            "One of: json, csv, xml, yaml, toml, html, markdown, "
+                            "plain_text, base64, url_encoded, hex, pdf, excel, docx. "
+                            "Omit to list all available conversions."
+                        ),
+                        "enum": [
+                            "json", "csv", "xml", "yaml", "toml",
+                            "html", "markdown", "plain_text",
+                            "base64", "url_encoded", "hex",
+                            "pdf", "excel", "docx",
+                        ],
+                    },
+                },
             },
             "annotations": {
                 "title": "List Supported Conversions",
@@ -318,7 +352,7 @@ async def _call_tool(name: str, arguments: dict[str, Any]) -> list[dict]:
     elif name == "reshape_json":
         return await _tool_reshape(arguments)
     elif name == "list_capabilities":
-        return _tool_list_capabilities()
+        return _tool_list_capabilities(arguments)
     else:
         raise ValueError(f"Unknown tool: {name}")
 
@@ -367,8 +401,14 @@ async def _tool_reshape(args: dict) -> list[dict]:
     return [{"type": "text", "text": orjson.dumps(result, option=orjson.OPT_INDENT_2).decode()}]
 
 
-def _tool_list_capabilities() -> list[dict]:
+def _tool_list_capabilities(args: dict) -> list[dict]:
     caps = registry.list_capabilities()
+    src_filter = args.get("source_format")
+    tgt_filter = args.get("target_format")
+    if src_filter:
+        caps = [c for c in caps if c["source"] == src_filter]
+    if tgt_filter:
+        caps = [c for c in caps if c["target"] == tgt_filter]
     lines = [f"Total conversions: {len(caps)}", ""]
     for c in caps:
         lines.append(f"• {c['source']} → {c['target']}  (${c['cost_usd']}, avg {c['avg_time_ms']}ms)")
