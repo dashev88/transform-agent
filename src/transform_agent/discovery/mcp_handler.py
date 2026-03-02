@@ -31,6 +31,8 @@ SERVER_INFO = {
 
 SERVER_CAPABILITIES = {
     "tools": {"listChanged": False},
+    "prompts": {"listChanged": False},
+    "resources": {"subscribe": False, "listChanged": False},
 }
 
 PROTOCOL_VERSION = "2025-03-26"
@@ -38,7 +40,7 @@ SUPPORTED_VERSIONS = {"2024-11-05", "2025-03-26"}
 
 
 # ---------------------------------------------------------------------------
-# Tool definitions (same as manifest, but in MCP list format)
+# Tool definitions with full annotations & parameter descriptions
 # ---------------------------------------------------------------------------
 
 def _get_tools() -> list[dict]:
@@ -47,9 +49,10 @@ def _get_tools() -> list[dict]:
             "name": "transform",
             "description": (
                 "Convert data from one format to another. "
-                "Supports: json, csv, xml, yaml, toml, html, markdown, plain_text, pdf, excel, docx. "
-                "For binary formats (pdf, excel, docx), send data as base64-encoded string. "
-                "Returns the transformed data as a string (or base64 for binary output)."
+                "Supports 43+ conversion pairs across JSON, CSV, XML, YAML, TOML, HTML, "
+                "Markdown, plain text, PDF, Excel, and DOCX. "
+                "For binary input formats (pdf, excel, docx), send data as a base64-encoded string. "
+                "Returns the transformed data as a string (or base64 for binary output formats like excel)."
             ),
             "inputSchema": {
                 "type": "object",
@@ -61,7 +64,7 @@ def _get_tools() -> list[dict]:
                             "html", "markdown", "plain_text",
                             "pdf", "excel", "docx",
                         ],
-                        "description": "The format of the input data",
+                        "description": "The format of the input data. Use the exact enum value, e.g. 'json', 'csv', 'xml'.",
                     },
                     "target_format": {
                         "type": "string",
@@ -70,50 +73,231 @@ def _get_tools() -> list[dict]:
                             "html", "markdown", "plain_text",
                             "excel",
                         ],
-                        "description": "The desired output format",
+                        "description": "The desired output format to convert to. Use the exact enum value, e.g. 'csv', 'yaml'.",
                     },
                     "data": {
                         "type": "string",
-                        "description": "The input data as text (or base64 for binary formats)",
+                        "description": (
+                            "The input data as a text string. For binary formats (pdf, excel, docx), "
+                            "provide the file content as a base64-encoded string."
+                        ),
                     },
                     "options": {
                         "type": "object",
-                        "description": "Optional: {delimiter, sheet_name, root_tag, ...}",
+                        "description": (
+                            "Optional configuration for the conversion. Supported keys: "
+                            "'delimiter' (CSV separator, default ','), "
+                            "'sheet_name' (Excel sheet, default 'Sheet1'), "
+                            "'root_tag' (XML root element, default 'root'), "
+                            "'item_tag' (XML item element, default 'item')."
+                        ),
+                        "properties": {
+                            "delimiter": {
+                                "type": "string",
+                                "description": "CSV column delimiter character. Default: ','",
+                            },
+                            "sheet_name": {
+                                "type": "string",
+                                "description": "Excel worksheet name to read from or write to. Default: 'Sheet1'",
+                            },
+                            "root_tag": {
+                                "type": "string",
+                                "description": "Root XML element name when generating XML. Default: 'root'",
+                            },
+                            "item_tag": {
+                                "type": "string",
+                                "description": "XML element name for each record. Default: 'item'",
+                            },
+                        },
                     },
                 },
                 "required": ["source_format", "target_format", "data"],
+            },
+            "annotations": {
+                "title": "Data Format Converter",
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
             },
         },
         {
             "name": "reshape_json",
             "description": (
-                "Restructure JSON from one shape to another using dot-notation path mapping. "
-                "Example: mapping={'name': 'user.profile.full_name'} extracts nested values."
+                "Restructure JSON data from one schema to another using dot-notation path mapping. "
+                "Maps fields from the source to new positions in the target. "
+                "Handles both single objects and arrays of objects. "
+                "Example: mapping={'full_name': 'user.profile.name', 'email': 'user.contact.email'} "
+                "extracts nested values into a flat structure."
             ),
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "data": {
                         "type": "object",
-                        "description": "The input JSON data (object or array)",
+                        "description": (
+                            "The input JSON data to reshape. Can be a single object or an array of objects. "
+                            "Example: {'user': {'profile': {'name': 'Alice'}}}"
+                        ),
                     },
                     "mapping": {
                         "type": "object",
-                        "description": "Mapping: {target_path: source_path, ...}",
+                        "description": (
+                            "A dictionary mapping target field paths to source field paths using dot-notation. "
+                            "Example: {'name': 'user.profile.name', 'city': 'user.address.city'} "
+                            "Target paths can also be nested: {'output.name': 'input.user.name'}."
+                        ),
                     },
                 },
                 "required": ["data", "mapping"],
             },
+            "annotations": {
+                "title": "JSON Schema Reshaper",
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         },
         {
             "name": "list_capabilities",
-            "description": "List all supported format conversions with pricing and average response times.",
+            "description": (
+                "List all supported format conversion pairs with pricing and average response times. "
+                "Call this first to discover which source→target format combinations are available "
+                "before attempting a transform."
+            ),
             "inputSchema": {
                 "type": "object",
                 "properties": {},
             },
+            "annotations": {
+                "title": "List Supported Conversions",
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         },
     ]
+
+
+# ---------------------------------------------------------------------------
+# Prompts — pre-built interaction templates
+# ---------------------------------------------------------------------------
+
+def _get_prompts() -> list[dict]:
+    return [
+        {
+            "name": "convert-data",
+            "description": "Convert data from one format to another. Provide the source format, target format, and data.",
+            "arguments": [
+                {
+                    "name": "source_format",
+                    "description": "Source format (json, csv, xml, yaml, toml, html, markdown, plain_text, pdf, excel, docx)",
+                    "required": True,
+                },
+                {
+                    "name": "target_format",
+                    "description": "Target format (json, csv, xml, yaml, toml, html, markdown, plain_text, excel)",
+                    "required": True,
+                },
+                {
+                    "name": "data",
+                    "description": "The data to convert",
+                    "required": True,
+                },
+            ],
+        },
+        {
+            "name": "reshape-json",
+            "description": "Restructure JSON by mapping fields from one schema to another using dot-notation paths.",
+            "arguments": [
+                {
+                    "name": "data",
+                    "description": "The JSON data to reshape (as a JSON string)",
+                    "required": True,
+                },
+                {
+                    "name": "mapping",
+                    "description": "Field mapping as JSON: {\"target_path\": \"source_path\", ...}",
+                    "required": True,
+                },
+            ],
+        },
+    ]
+
+
+def _get_prompt(name: str, arguments: dict) -> dict:
+    if name == "convert-data":
+        return {
+            "description": f"Convert {arguments.get('source_format', '?')} to {arguments.get('target_format', '?')}",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": {
+                        "type": "text",
+                        "text": (
+                            f"Please convert this {arguments.get('source_format', 'data')} "
+                            f"to {arguments.get('target_format', 'the target format')}:\n\n"
+                            f"{arguments.get('data', '')}"
+                        ),
+                    },
+                },
+            ],
+        }
+    elif name == "reshape-json":
+        return {
+            "description": "Reshape JSON data with field mapping",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": {
+                        "type": "text",
+                        "text": (
+                            f"Reshape this JSON using the field mapping.\n\n"
+                            f"Data: {arguments.get('data', '{}')}\n\n"
+                            f"Mapping: {arguments.get('mapping', '{}')}"
+                        ),
+                    },
+                },
+            ],
+        }
+    raise ValueError(f"Unknown prompt: {name}")
+
+
+# ---------------------------------------------------------------------------
+# Resources — expose capabilities as a readable resource
+# ---------------------------------------------------------------------------
+
+def _get_resources() -> list[dict]:
+    return [
+        {
+            "uri": "transform://capabilities",
+            "name": "Supported Conversions",
+            "description": "Complete list of all supported format conversion pairs with pricing and performance data.",
+            "mimeType": "application/json",
+        },
+        {
+            "uri": "transform://formats",
+            "name": "Supported Formats",
+            "description": "List of all input and output formats supported by the transform agent.",
+            "mimeType": "application/json",
+        },
+    ]
+
+
+def _read_resource(uri: str) -> list[dict]:
+    if uri == "transform://capabilities":
+        caps = registry.list_capabilities()
+        return [{"uri": uri, "mimeType": "application/json", "text": orjson.dumps(caps, option=orjson.OPT_INDENT_2).decode()}]
+    elif uri == "transform://formats":
+        formats = {
+            "input_formats": ["json", "csv", "xml", "yaml", "toml", "html", "markdown", "plain_text", "pdf", "excel", "docx"],
+            "output_formats": ["json", "csv", "xml", "yaml", "toml", "html", "markdown", "plain_text", "excel"],
+            "binary_formats": ["pdf", "excel", "docx"],
+        }
+        return [{"uri": uri, "mimeType": "application/json", "text": orjson.dumps(formats, option=orjson.OPT_INDENT_2).decode()}]
+    raise ValueError(f"Unknown resource: {uri}")
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +432,35 @@ async def handle_mcp_message(body: dict) -> dict | None:
                 "content": [{"type": "text", "text": f"Error: {e}"}],
                 "isError": True,
             })
+
+    elif method == "prompts/list":
+        return _jsonrpc_result(req_id, {
+            "prompts": _get_prompts(),
+        })
+
+    elif method == "prompts/get":
+        prompt_name = params.get("name", "")
+        arguments = params.get("arguments", {})
+        try:
+            result = _get_prompt(prompt_name, arguments)
+            return _jsonrpc_result(req_id, result)
+        except Exception as e:
+            return _jsonrpc_error(req_id, -32602, str(e))
+
+    elif method == "resources/list":
+        return _jsonrpc_result(req_id, {
+            "resources": _get_resources(),
+        })
+
+    elif method == "resources/read":
+        uri = params.get("uri", "")
+        try:
+            contents = _read_resource(uri)
+            return _jsonrpc_result(req_id, {
+                "contents": contents,
+            })
+        except Exception as e:
+            return _jsonrpc_error(req_id, -32602, str(e))
 
     else:
         return _jsonrpc_error(req_id, -32601, f"Method not found: {method}")
