@@ -1,0 +1,69 @@
+[project]
+name = "transform-agent"
+version = "0.1.0"
+description = "A2A-native data transformation agent. Converts between formats at machine speed."
+requires-python = ">=3.12"
+license = {text = "MIT"}
+dependencies = [
+    # API
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+
+    # Speed-critical serialization
+    "orjson>=3.10.0",
+    "polars>=1.0.0",
+
+    # XML
+    "lxml>=5.0.0",
+    "xmltodict>=0.14.0",
+    "defusedxml>=0.7.0",
+
+    # YAML
+    "ruamel.yaml>=0.18.0",
+
+    # TOML (read: stdlib tomllib; write:)
+    "tomli-w>=1.0.0",
+
+    # Markdown / HTML
+    "markdownify>=0.14.0",
+    "markdown-it-py>=3.0.0",
+    "beautifulsoup4>=4.12.0",
+
+    # PDF
+    "pymupdf>=1.24.0",
+
+    # Excel
+    "openpyxl>=3.1.0",
+    "xlsxwriter>=3.2.0",
+    "fastexcel>=0.7.0",
+
+    # DOCX
+    "python-docx>=1.0.0",
+
+    # Payment
+    "x402[fastapi,httpx,evm]>=0.1.0",
+
+    # HTTP client (for x402 facilitator)
+    "httpx>=0.27.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.27.0",
+]
+sdk = [
+    "httpx>=0.27.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/transform_agent", "sdk"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
