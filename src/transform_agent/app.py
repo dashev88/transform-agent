@@ -43,6 +43,7 @@ from transform_agent.middleware.metering import get_revenue, log_transaction
 from transform_agent.middleware.rate_limit import check_rate_limit
 from transform_agent.discovery.a2a_card import build_agent_card
 from transform_agent.discovery.mcp import build_mcp_manifest
+from transform_agent.discovery.mcp_handler import handle_mcp_message
 from transform_agent.discovery.openapi import customize_openapi
 from transform_agent.transforms.schema import reshape_json
 
@@ -182,6 +183,44 @@ async def a2a_agent_card():
 async def mcp_manifest():
     """MCP discovery for Claude and OpenAI agents."""
     return _orjson_response(build_mcp_manifest(BASE_URL))
+
+
+# ---------------------------------------------------------------------------
+# MCP Streamable HTTP endpoint (JSON-RPC 2.0)
+# ---------------------------------------------------------------------------
+
+@app.post("/mcp")
+async def mcp_endpoint(request: Request):
+    """MCP Streamable HTTP transport — handles JSON-RPC 2.0 messages."""
+    try:
+        body = orjson.loads(await request.body())
+    except Exception:
+        return Response(
+            content=orjson.dumps({
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {"code": -32700, "message": "Parse error"},
+            }),
+            media_type="application/json",
+            status_code=200,
+        )
+
+    # Handle batch
+    if isinstance(body, list):
+        results = []
+        for msg in body:
+            resp = await handle_mcp_message(msg)
+            if resp is not None:
+                results.append(resp)
+        if results:
+            return Response(content=orjson.dumps(results), media_type="application/json")
+        return Response(status_code=204)
+
+    # Handle single message
+    resp = await handle_mcp_message(body)
+    if resp is None:
+        return Response(status_code=204)
+    return Response(content=orjson.dumps(resp), media_type="application/json")
 
 
 # ---------------------------------------------------------------------------
