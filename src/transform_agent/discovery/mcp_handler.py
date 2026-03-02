@@ -134,19 +134,26 @@ def _get_tools() -> list[dict]:
                 "type": "object",
                 "properties": {
                     "data": {
-                        "type": "object",
+                        "type": ["object", "array"],
                         "description": (
-                            "The input JSON data to reshape. Can be a single object or an array of objects. "
-                            "Example: {'user': {'profile': {'name': 'Alice'}}}"
+                            "The input JSON data to reshape. Can be a single object like "
+                            "{'user': {'profile': {'name': 'Alice'}}} or an array of objects like "
+                            "[{'user': {'name': 'Alice'}}, {'user': {'name': 'Bob'}}]. "
+                            "Each object in an array is reshaped independently using the same mapping."
                         ),
                     },
                     "mapping": {
                         "type": "object",
                         "description": (
                             "A dictionary mapping target field paths to source field paths using dot-notation. "
-                            "Example: {'name': 'user.profile.name', 'city': 'user.address.city'} "
-                            "Target paths can also be nested: {'output.name': 'input.user.name'}."
+                            "Keys are target paths (where to put the value), values are source paths (where to read from). "
+                            "Example: {'name': 'user.profile.name', 'city': 'user.address.city'} extracts nested fields. "
+                            "Target paths can also be nested: {'output.name': 'input.user.name'} creates nested output."
                         ),
+                        "additionalProperties": {
+                            "type": "string",
+                            "description": "Dot-notation path to the source field, e.g. 'user.profile.name'",
+                        },
                     },
                 },
                 "required": ["data", "mapping"],
